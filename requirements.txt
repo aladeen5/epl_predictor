@@ -1,0 +1,9 @@
+streamlit~=1.52.1
+pandas~=2.3.3
+numpy~=2.3.5
+xgboost~=3.1.2
+plotly~=6.5.0
+requests~=2.32.5
+matplotlib~=3.10.7
+seaborn~=0.13.2
+scikit-learn~=1.7.2

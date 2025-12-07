@@ -1,0 +1,47 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Eslint" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="sklearn" />
+          <option value="beautifulsoup4" />
+          <option value="python_dateutil" />
+          <option value="lxml" />
+          <option value="Django" />
+          <option value="djangorestframework" />
+          <option value="django-cors-headers" />
+          <option value="django-filter" />
+          <option value="djangorestframework-simplejwt" />
+          <option value="django-environ" />
+          <option value="cryptography" />
+          <option value="psycopg2-binary" />
+          <option value="dj-database-url" />
+          <option value="celery" />
+          <option value="redis" />
+          <option value="django-redis" />
+          <option value="drf-spectacular" />
+          <option value="Pillow" />
+          <option value="django-storages" />
+          <option value="boto3" />
+          <option value="requests" />
+          <option value="python-decouple" />
+          <option value="django-extensions" />
+          <option value="python-json-logger" />
+          <option value="pytest" />
+          <option value="pytest-django" />
+          <option value="pytest-cov" />
+          <option value="factory-boy" />
+          <option value="black" />
+          <option value="flake8" />
+          <option value="isort" />
+          <option value="gunicorn" />
+          <option value="whitenoise" />
+          <option value="python-dateutil" />
+          <option value="pytz" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
