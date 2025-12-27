@@ -114,6 +114,8 @@ class MatchDatabase:
                        ''')
 
         # Predictions table (for logging)
+        # In database.py, update the predictions table creation:
+
         cursor.execute('''
                        CREATE TABLE IF NOT EXISTS predictions
                        (
@@ -158,6 +160,22 @@ class MatchDatabase:
                            REAL
                            NOT
                            NULL,
+                           predicted_home_goals
+                           INTEGER
+                           DEFAULT
+                           NULL,
+                           predicted_away_goals
+                           INTEGER
+                           DEFAULT
+                           NULL,
+                           actual_home_goals
+                           INTEGER
+                           DEFAULT
+                           NULL,
+                           actual_away_goals
+                           INTEGER
+                           DEFAULT
+                           NULL,
                            actual_result
                            TEXT
                            DEFAULT
@@ -172,7 +190,6 @@ class MatchDatabase:
                            CURRENT_TIMESTAMP
                        )
                        ''')
-
         conn.commit()
         conn.close()
         print("✓ Database initialized")
@@ -363,6 +380,28 @@ class MatchDatabase:
         """Save a prediction to the database"""
         conn = self.get_connection()
         cursor = conn.cursor()
+
+        cursor.execute('''
+                       INSERT INTO predictions (prediction_date, match_date, home_team, away_team,
+                                                predicted_result, prob_home, prob_draw, prob_away, confidence,
+                                                predicted_home_goals, predicted_away_goals)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ''', (
+                           datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                           prediction_data['match_date'],
+                           prediction_data['home_team'],
+                           prediction_data['away_team'],
+                           prediction_data['predicted_result'],
+                           prediction_data['prob_home'],
+                           prediction_data['prob_draw'],
+                           prediction_data['prob_away'],
+                           prediction_data['confidence'],
+                           prediction_data.get('predicted_home_goals'),
+                           prediction_data.get('predicted_away_goals')
+                       ))
+
+        conn.commit()
+        conn.close()
 
         cursor.execute('''
                        INSERT INTO predictions (prediction_date, match_date, home_team, away_team,

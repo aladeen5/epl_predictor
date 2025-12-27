@@ -11,7 +11,7 @@ print("=" * 60)
 # Load the cleaned data from your notebook
 # Option 1: If you saved df to CSV in your notebook
 try:
-    df = pd.read_csv('data/epl_cleaned.csv')
+    df = pd.read_csv('cleaned_epl_data.csv')
     df['Date'] = pd.to_datetime(df['Date'])
     print("✓ Loaded data from CSV")
 except:

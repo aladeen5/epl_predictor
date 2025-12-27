@@ -10,13 +10,13 @@
         "gamma": 0.2,
         "colsample_bytree": 0.9
     },
-    "test_accuracy": 0.5793650793650794,
-    "test_logloss": 0.9035638746369767,
-    "best_iteration": 32,
-    "training_date": "2025-12-07 14:38:47",
+    "test_accuracy": 0.5836501901140685,
+    "test_logloss": 0.9126228500112092,
+    "best_iteration": 25,
+    "training_date": "2025-12-14 20:39:18",
     "model_version": "1.0",
-    "train_date_range": "2015-08-29 to 2022-11-05",
-    "test_date_range": "2024-02-24 to 2025-05-25",
+    "train_date_range": "2015-08-29 to 2023-02-24",
+    "test_date_range": "2024-08-17 to 2025-12-08",
     "feature_columns": [
         "HS",
         "AS",
@@ -68,11 +68,11 @@
         "AST",
         "HC",
         "PPG_Difference",
-        "Away_avg_goals_conceded",
         "WinRate_Difference",
-        "Away_matches_played",
-        "Home_avg_goals_conceded",
+        "Away_avg_goals_conceded",
+        "AC",
+        "MatchNumber",
         "Home_avg_goals_scored",
-        "AC"
+        "Home_avg_goals_conceded"
     ]
 }

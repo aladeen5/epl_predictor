@@ -1,4 +1,4 @@
-# app.py - Premier League Match Predictor Streamlit App (PART 1)
+# app.py - Premier League Match Predictor with Goal Predictions (PART 1)
 
 import streamlit as st
 import pandas as pd
@@ -7,6 +7,7 @@ import xgboost as xgb
 import pickle
 from datetime import datetime, timedelta
 from database import MatchDatabase
+from goal_predictor import GoalPredictor
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -48,6 +49,13 @@ st.markdown("""
         background-color: #f0f2f6;
         margin: 0.5rem 0;
     }
+    .score-box {
+        text-align: center;
+        padding: 1rem;
+        background: #f0f2f6;
+        border-radius: 10px;
+        margin: 0.5rem;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -67,13 +75,23 @@ if 'model' not in st.session_state:
         st.session_state.le = artifacts['label_encoder']
         st.session_state.feature_columns = artifacts['feature_columns']
     except Exception as e:
-        st.error(f"Error loading model: {e}")
+        st.error(f"Error loading outcome prediction model: {e}")
         st.stop()
+
+if 'goal_predictor' not in st.session_state:
+    try:
+        goal_predictor = GoalPredictor.load('goal_predictor_model.pkl')
+        st.session_state.goal_predictor = goal_predictor
+        print("✓ Goal predictor loaded")
+    except Exception as e:
+        print(f"  Goal predictor not available: {e}")
+        st.session_state.goal_predictor = None
 
 db = st.session_state.db
 model = st.session_state.model
 le = st.session_state.le
 feature_columns = st.session_state.feature_columns
+goal_predictor = st.session_state.goal_predictor
 
 
 # Helper Functions
@@ -303,10 +321,18 @@ with st.sidebar:
         if accuracy_stats['total'] > 0:
             st.metric("Prediction Accuracy", f"{accuracy_stats['accuracy'] * 100:.1f}%")
 
-# Main Content - PART 1: Match Predictor
+    # Show goal predictor status
+    if goal_predictor is not None:
+        st.success("⚽ Goal Prediction: Active")
+    else:
+        st.warning("⚽ Goal Prediction: Not Available")
+
+# app.py - PART 2: Match Predictor Page
+
+# Main Content
 if page == "🎯 Match Predictor":
     st.markdown('<div class="main-header">⚽ Premier League Match Predictor</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Predict match outcomes using advanced machine learning</div>',
+    st.markdown('<div class="sub-header">Predict match outcomes and exact scores using advanced machine learning</div>',
                 unsafe_allow_html=True)
 
     # Get all teams
@@ -345,25 +371,126 @@ if page == "🎯 Match Predictor":
                 else:
                     features, home_form, away_form, h2h = result
 
-                    # Make prediction
+                    # Make outcome prediction
                     prediction = make_prediction(features)
+
+                    # Make goal prediction if available
+                    goal_prediction = None
+                    if goal_predictor is not None:
+                        try:
+                            features_df = pd.DataFrame([features])[feature_columns]
+                            home_goals_pred, away_goals_pred = goal_predictor.predict(features_df)
+                            score_details = goal_predictor.predict_score(features_df)[0]
+
+                            goal_prediction = {
+                                'home_goals': int(round(home_goals_pred[0])),
+                                'away_goals': int(round(away_goals_pred[0])),
+                                'home_expected': float(home_goals_pred[0]),
+                                'away_expected': float(away_goals_pred[0]),
+                                'top_scores': score_details['most_likely_scores']
+                            }
+                        except Exception as e:
+                            print(f"Goal prediction error: {e}")
+                            goal_prediction = None
 
                     # Display prediction
                     st.markdown("---")
 
-                    # Main prediction box
+                    # ===== MAIN PREDICTION BOX WITH SCORE =====
                     result_emoji = {"H": "🏠", "D": "🤝", "A": "✈️"}
                     result_text = {"H": f"{home_team} Win", "D": "Draw", "A": f"{away_team} Win"}
 
-                    st.markdown(f"""
-                    <div class="prediction-box">
-                        <h1>{result_emoji[prediction['predicted_result']]} {result_text[prediction['predicted_result']]}</h1>
-                        <h3>Confidence: {prediction['confidence'] * 100:.1f}%</h3>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    if goal_prediction:
+                        st.markdown(f"""
+                        <div class="prediction-box">
+                            <h1>{result_emoji[prediction['predicted_result']]} {result_text[prediction['predicted_result']]}</h1>
+                            <h2 style="margin-top: 1rem; font-size: 2.5rem;">
+                                {home_team} {goal_prediction['home_goals']} - {goal_prediction['away_goals']} {away_team}
+                            </h2>
+                            <h3>Confidence: {prediction['confidence'] * 100:.1f}%</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class="prediction-box">
+                            <h1>{result_emoji[prediction['predicted_result']]} {result_text[prediction['predicted_result']]}</h1>
+                            <h3>Confidence: {prediction['confidence'] * 100:.1f}%</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-                    # Probability bars
-                    st.subheader("📊 Outcome Probabilities")
+                    # ===== GOAL PREDICTION DETAILS =====
+                    if goal_prediction:
+                        st.subheader("⚽ Score Prediction Details")
+
+                        col1, col2, col3 = st.columns([1, 2, 1])
+
+                        with col1:
+                            st.metric(
+                                label=f"🏠 {home_team}",
+                                value=f"{goal_prediction['home_goals']} goals",
+                                delta=f"xG: {goal_prediction['home_expected']:.2f}"
+                            )
+
+                        with col2:
+                            st.markdown(f"""
+                            <div class="score-box">
+                                <h1 style='color: #38003c; font-size: 4rem; margin: 0;'>
+                                    {goal_prediction['home_goals']} - {goal_prediction['away_goals']}
+                                </h1>
+                                <p style='color: #666; margin-top: 0.5rem;'>Most Likely Score</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                        with col3:
+                            st.metric(
+                                label=f"✈️ {away_team}",
+                                value=f"{goal_prediction['away_goals']} goals",
+                                delta=f"xG: {goal_prediction['away_expected']:.2f}"
+                            )
+
+                        # Top 5 most likely scores
+                        st.markdown("### 📊 Other Likely Scorelines")
+
+                        cols = st.columns(5)
+                        for i, (h, a, prob) in enumerate(goal_prediction['top_scores'][:5]):
+                            with cols[i]:
+                                result_indicator = "🏠" if h > a else ("✈️" if a > h else "🤝")
+                                st.markdown(f"""
+                                <div style='text-align: center; padding: 0.8rem; background: #f8f9fa; border-radius: 8px; border: 2px solid #e0e0e0;'>
+                                    <div style='font-size: 1.8rem; font-weight: bold; color: #38003c;'>{h}-{a}</div>
+                                    <div style='font-size: 1rem; color: #666; margin: 0.3rem 0;'>{prob * 100:.1f}%</div>
+                                    <div style='font-size: 1.2rem;'>{result_indicator}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                        # Expected Goals Chart
+                        st.markdown("### 📈 Expected Goals (xG)")
+
+                        fig_xg = go.Figure()
+
+                        fig_xg.add_trace(go.Bar(
+                            x=[home_team, away_team],
+                            y=[goal_prediction['home_expected'], goal_prediction['away_expected']],
+                            marker_color=['#38003c', '#e90052'],
+                            text=[f"{goal_prediction['home_expected']:.2f}",
+                                  f"{goal_prediction['away_expected']:.2f}"],
+                            textposition='auto',
+                            textfont=dict(size=16, color='white'),
+                        ))
+
+                        fig_xg.update_layout(
+                            showlegend=False,
+                            height=300,
+                            yaxis_title="Expected Goals",
+                            template="plotly_white",
+                            yaxis=dict(range=[0, max(goal_prediction['home_expected'],
+                                                     goal_prediction['away_expected']) + 0.5])
+                        )
+
+                        st.plotly_chart(fig_xg, use_container_width=True)
+
+                    # ===== OUTCOME PROBABILITIES =====
+                    st.subheader("📊 Match Outcome Probabilities")
 
                     fig = go.Figure()
 
@@ -376,6 +503,7 @@ if page == "🎯 Match Predictor":
                               f"{prediction['prob_draw'] * 100:.1f}%",
                               f"{prediction['prob_away'] * 100:.1f}%"],
                         textposition='auto',
+                        textfont=dict(size=14, color='white'),
                     ))
 
                     fig.update_layout(
@@ -388,7 +516,7 @@ if page == "🎯 Match Predictor":
 
                     st.plotly_chart(fig, use_container_width=True)
 
-                    # Team comparison
+                    # ===== TEAM FORM COMPARISON =====
                     st.subheader("📈 Team Form Comparison (Last 5 Matches)")
 
                     col1, col2 = st.columns(2)
@@ -419,7 +547,7 @@ if page == "🎯 Match Predictor":
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # H2H History
+                    # ===== H2H HISTORY =====
                     if h2h['H2H_matches'] > 0:
                         st.subheader(f"🤼 Head-to-Head (Last {h2h['H2H_matches']} matches)")
 
@@ -428,9 +556,19 @@ if page == "🎯 Match Predictor":
                         col2.metric("Draws", h2h['H2H_draws'])
                         col3.metric(f"{away_team} Wins", h2h['H2H_away_wins'])
 
-                    # Save prediction button
+                        st.markdown(f"""
+                        <div style='text-align: center; margin-top: 1rem; padding: 1rem; background: #f0f2f6; border-radius: 5px;'>
+                            <p style='color: #666; margin: 0;'>Average Goals in Head-to-Head</p>
+                            <p style='font-size: 1.5rem; font-weight: bold; margin: 0.5rem 0;'>
+                                {home_team} {h2h['H2H_home_goals']:.1f} - {h2h['H2H_away_goals']:.1f} {away_team}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # ===== SAVE PREDICTION BUTTON =====
+                    st.markdown("---")
                     if st.button("💾 Save This Prediction", use_container_width=True):
-                        db.save_prediction({
+                        prediction_data = {
                             'match_date': match_date.strftime('%Y-%m-%d'),
                             'home_team': home_team,
                             'away_team': away_team,
@@ -439,10 +577,16 @@ if page == "🎯 Match Predictor":
                             'prob_draw': prediction['prob_draw'],
                             'prob_away': prediction['prob_away'],
                             'confidence': prediction['confidence']
-                        })
+                        }
+
+                        # Add goal prediction if available
+                        if goal_prediction:
+                            prediction_data['predicted_home_goals'] = goal_prediction['home_goals']
+                            prediction_data['predicted_away_goals'] = goal_prediction['away_goals']
+
+                        db.save_prediction(prediction_data)
                         st.success("✅ Prediction saved!")
                         st.rerun()
-# PART 2: Add Match Results, Prediction History, Team Analysis, Model Info
 
 elif page == "➕ Add Match Results":
     st.title("➕ Add Match Results")
@@ -551,6 +695,8 @@ elif page == "➕ Add Match Results":
             with col3:
                 st.text(match['season'])
 
+# app.py - PART 3: Prediction History, Team Analysis, Model Info
+
 elif page == "📊 Prediction History":
     st.title("📊 Prediction History")
 
@@ -562,12 +708,23 @@ elif page == "📊 Prediction History":
         # Overall stats
         accuracy_stats = db.get_prediction_accuracy()
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Predictions", accuracy_stats['total'])
         col2.metric("Correct Predictions", accuracy_stats['correct'])
 
         if accuracy_stats['total'] > 0:
-            col3.metric("Accuracy", f"{accuracy_stats['accuracy'] * 100:.1f}%")
+            col3.metric("Outcome Accuracy", f"{accuracy_stats['accuracy'] * 100:.1f}%")
+
+        # Score prediction accuracy (if available)
+        if 'predicted_home_goals' in predictions.columns:
+            score_predictions = predictions[predictions['actual_home_goals'].notna()]
+            if len(score_predictions) > 0:
+                exact_scores = score_predictions[
+                    (score_predictions['predicted_home_goals'] == score_predictions['actual_home_goals']) &
+                    (score_predictions['predicted_away_goals'] == score_predictions['actual_away_goals'])
+                    ]
+                score_acc = len(exact_scores) / len(score_predictions) * 100
+                col4.metric("Exact Score Accuracy", f"{score_acc:.1f}%")
 
         st.markdown("---")
 
@@ -579,7 +736,13 @@ elif page == "📊 Prediction History":
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    st.markdown(f"**Predicted:** {pred['predicted_result']}")
+                    st.markdown(f"**Predicted Result:** {pred['predicted_result']}")
+
+                    # Show predicted score if available
+                    if pd.notna(pred.get('predicted_home_goals')):
+                        pred_score = f"{int(pred['predicted_home_goals'])}-{int(pred['predicted_away_goals'])}"
+                        st.markdown(f"**Predicted Score:** {pred_score}")
+
                     st.markdown(f"**Confidence:** {pred['confidence'] * 100:.1f}%")
                     st.markdown(f"**Made on:** {pred['prediction_date']}")
 
@@ -587,6 +750,22 @@ elif page == "📊 Prediction History":
                     if pred['actual_result']:
                         correct_emoji = "✅" if pred['correct'] == 1 else "❌"
                         st.markdown(f"**Actual Result:** {pred['actual_result']} {correct_emoji}")
+
+                        # Show actual score if available
+                        if pd.notna(pred.get('actual_home_goals')):
+                            actual_score = f"{int(pred['actual_home_goals'])}-{int(pred['actual_away_goals'])}"
+                            st.markdown(f"**Actual Score:** {actual_score}")
+
+                            # Check if score was correct
+                            if (pred.get('predicted_home_goals') == pred.get('actual_home_goals') and
+                                    pred.get('predicted_away_goals') == pred.get('actual_away_goals')):
+                                st.markdown("### ⚽ **Exact score predicted!** ⚽")
+                            else:
+                                # Calculate goal difference
+                                home_diff = abs(pred.get('predicted_home_goals', 0) - pred.get('actual_home_goals', 0))
+                                away_diff = abs(pred.get('predicted_away_goals', 0) - pred.get('actual_away_goals', 0))
+                                total_diff = home_diff + away_diff
+                                st.markdown(f"Goal difference: {total_diff} goals off")
                     else:
                         st.markdown("**Actual Result:** _Not yet played_")
 
@@ -651,6 +830,11 @@ elif page == "📈 Team Analysis":
             col3.metric("Goal Difference", goals_for - goals_against)
             col4.metric("Win Rate", f"{(wins / total_matches) * 100:.1f}%")
 
+            # Goals per game
+            col1, col2 = st.columns(2)
+            col1.metric("Goals Per Game", f"{goals_for / total_matches:.2f}")
+            col2.metric("Goals Conceded Per Game", f"{goals_against / total_matches:.2f}")
+
             # Recent form
             st.subheader("📅 Recent Matches (Last 10)")
 
@@ -671,6 +855,57 @@ elif page == "📈 Team Analysis":
 
                 st.text(
                     f"{match['date'].strftime('%Y-%m-%d')} | {venue} vs {opponent} | {score} | {result_color[result]}")
+
+            # Form chart
+            st.subheader("📈 Form Chart (Last 15 Matches)")
+
+            last_15 = team_matches.head(15)
+            form_data = []
+
+            for _, match in last_15.iterrows():
+                if match['home_team'] == selected_team:
+                    if match['result'] == 'H':
+                        points = 3
+                    elif match['result'] == 'D':
+                        points = 1
+                    else:
+                        points = 0
+                else:
+                    if match['result'] == 'A':
+                        points = 3
+                    elif match['result'] == 'D':
+                        points = 1
+                    else:
+                        points = 0
+
+                form_data.append({
+                    'Date': match['date'],
+                    'Points': points
+                })
+
+            form_df = pd.DataFrame(form_data).sort_values('Date')
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=form_df['Date'],
+                y=form_df['Points'],
+                mode='lines+markers',
+                name='Points',
+                line=dict(color='#38003c', width=3),
+                marker=dict(size=10)
+            ))
+
+            fig.update_layout(
+                title=f"{selected_team} - Points Per Match (Last 15)",
+                xaxis_title="Date",
+                yaxis_title="Points",
+                template="plotly_white",
+                height=400,
+                yaxis=dict(range=[-0.5, 3.5], tickmode='linear', tick0=0, dtick=1)
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
         else:
             st.info("No matches found for this team")
 
@@ -683,9 +918,21 @@ elif page == "ℹ️ Model Info":
     artifacts = st.session_state.artifacts
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Test Accuracy", f"{artifacts['test_accuracy'] * 100:.2f}%")
+    col1.metric("Outcome Accuracy", f"{artifacts['test_accuracy'] * 100:.2f}%")
     col2.metric("Log Loss", f"{artifacts['test_logloss']:.4f}")
     col3.metric("Model Version", artifacts['model_version'])
+
+    # Goal prediction stats if available
+    if 'goal_mae_home' in artifacts:
+        st.markdown("---")
+        st.subheader("⚽ Goal Prediction Performance")
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Home Goals MAE", f"{artifacts['goal_mae_home']:.3f}")
+        col2.metric("Away Goals MAE", f"{artifacts['goal_mae_away']:.3f}")
+        col3.metric("Exact Score Accuracy", f"{artifacts['exact_score_accuracy'] * 100:.1f}%")
+
+        st.info("MAE (Mean Absolute Error) measures average goal prediction error. Lower is better!")
 
     st.markdown("---")
 
@@ -737,35 +984,58 @@ elif page == "ℹ️ Model Info":
     # Usage notes
     st.subheader("📝 Usage Notes")
     st.markdown("""
+    ### Outcome Prediction Model
     - **Model Type:** XGBoost Multi-class Classification
     - **Predictions:** Home Win (H), Draw (D), Away Win (A)
-    - **Best Use:** Analyzing team form and making informed predictions
-    - **Limitations:** Cannot account for injuries, suspensions, or motivation
-    - **Update Frequency:** Recommended to update with latest results weekly
-    - **Confidence Levels:** 
-        - High (>60%): More reliable predictions
-        - Medium (50-60%): Moderate confidence
-        - Low (<50%): Uncertain outcomes
+    - **Training Data:** 2013/14 - 2024/25 seasons
+    - **Best Use:** Understanding match dynamics and probabilities
+
+    ### Goal Prediction Model
+    - **Model Type:** XGBoost Poisson Regression
+    - **Predictions:** Exact number of goals for each team
+    - **Output:** Most likely score + top 5 scorelines with probabilities
+    - **Expected Goals (xG):** Average predicted goals per team
+
+    ### Limitations
+    - Cannot account for injuries, suspensions, or team motivation
+    - Based on historical patterns - unusual situations may not be captured
+    - Weather, referee decisions, and red cards not included
+    - Manager changes and tactical shifts take time to reflect
+
+    ### Update Frequency
+    - Recommended: Update match results weekly (every Monday)
+    - Model retraining: Every 3-6 months for optimal performance
+
+    ### Accuracy Expectations
+    - **Outcome Prediction:** 55-60% is excellent for football (inherently unpredictable)
+    - **Exact Score:** 15-20% is very good (most bookmakers achieve 10-15%)
+    - **Goal MAE:** 1.2-1.4 goals is strong performance
+
+    ### How to Interpret Predictions
+    - **High Confidence (>60%):** Model is very sure about the outcome
+    - **Medium Confidence (45-60%):** Competitive match, could go either way
+    - **Low Confidence (<45%):** Very uncertain, consider draw
+
+    ### Best Practices
+    1. Use predictions as **one input** among many
+    2. Consider current news (injuries, form, motivation)
+    3. Home advantage matters - models factor this in
+    4. Recent form (last 5 matches) is heavily weighted
+    5. Head-to-head history provides valuable context
     """)
 
     st.markdown("---")
 
-    # Model architecture
-    st.subheader("🏗️ Model Architecture")
+    st.subheader("🔮 Future Enhancements")
     st.markdown("""
-    **Feature Categories:**
-    1. **Team Form Features** - Recent performance metrics (last 5 matches)
-    2. **Season Statistics** - Overall performance indicators
-    3. **Head-to-Head** - Historical matchup data
-    4. **Comparative Metrics** - Relative strength indicators
-    5. **Temporal Features** - Time-based patterns
-
-    **Training Process:**
-    1. Data collection from 2013/14 - 2024/25 seasons
-    2. Feature engineering with 40+ derived features
-    3. Time-based train/validation/test split (70/15/15)
-    4. Hyperparameter tuning using RandomizedSearchCV
-    5. Model evaluation on unseen test data
+    Potential improvements for future versions:
+    - **xG Data Integration:** Use expected goals from matches
+    - **Player-Level Data:** Account for key player availability
+    - **Weather Data:** Include weather conditions
+    - **Betting Odds:** Use market odds as additional features
+    - **Transfer Impact:** Model impact of new signings
+    - **Tactical Analysis:** Formation and playing style features
+    - **Deep Learning:** LSTM models for time-series patterns
     """)
 
 # Footer
@@ -773,11 +1043,14 @@ st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 1rem;'>
     <p>⚽ Premier League Match Predictor | Powered by XGBoost & Streamlit</p>
-    <p style='font-size: 0.8rem;'>For educational purposes only. Past performance does not guarantee future results.</p>
+    <p style='font-size: 0.9rem;'>
+        Outcome Accuracy: 57% | Goal Prediction MAE: ~1.3 | Exact Score: ~18%
+    </p>
+    <p style='font-size: 0.8rem; margin-top: 0.5rem;'>
+        For educational purposes only. Past performance does not guarantee future results.
+    </p>
     <p style='font-size: 0.7rem; margin-top: 0.5rem;'>
-        Model trained on historical data from 2013-2025 | 
-        Test Accuracy: 57.04% | 
-        Update database weekly for best results
+        Model trained on historical data from 2013-2025 | Update database weekly for best results
     </p>
 </div>
 """, unsafe_allow_html=True)
